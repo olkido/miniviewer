@@ -5,31 +5,45 @@ project(miniviewer)
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 set(CMAKE_CXX_LINK_FLAGS "-framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo")
 
-#if(APPLE)
-#  set(CMAKE_OSX_DEPLOYMENT_TARGET "10.11" CACHE STRING "Deployment target for OSX" FORCE)
-#endif(APPLE)
-
-set(LIBIGL_DIR /Users/olkido/Dropbox/Work/code/other/libigl/)
+set(LIBIGL_DIR /Users/$ENV{USER}/Dropbox/Work/code/other/libigl/)
 set(LIBIGL_INCLUDE_DIR ${LIBIGL_DIR}/include)
 set(LIBIGL_LIB_DIR ${LIBIGL_DIR}/lib)
-set(LIBIGL_INCLUDE_DIRS ${LIBIGL_INCLUDE_DIR}  ${LIBIGL_DIR}/external/nanogui/include ${LIBIGL_DIR}/external/nanogui/ext/glfw/include/ ${LIBIGL_DIR}external/nanogui/ext/nanovg/src)
+set(LIBIGL_INCLUDE_DIRS ${LIBIGL_INCLUDE_DIR})
 include_directories(${LIBIGL_INCLUDE_DIRS})
 set(LIBIGL_LIBRARIES
-${LIBIGL_LIB_DIR}/libigl.a
-${LIBIGL_LIB_DIR}/libigl_viewer.a
+${LIBIGL_LIB_DIR}/libigl_core.a
+${LIBIGL_LIB_DIR}/libigl_opengl_glfw.a
+${LIBIGL_LIB_DIR}/libigl_opengl_glfw_imgui.a
+${LIBIGL_LIB_DIR}/libigl_opengl.a
 )
 
 add_definitions(-DIGL_STATIC_LIBRARY)
 list(APPEND SHARED_LIBRARIES ${LIBIGL_LIBRARIES})
-add_definitions(-DLIBIGL_WITH_NANOGUI)
-add_definitions(-DIGL_VIEWER_WITH_NANOGUI)
 
-
+### GLFW
+include_directories(${LIBIGL_DIR}/external/glfw/include)
 list(APPEND SHARED_LIBRARIES ${LIBIGL_LIB_DIR}/libglfw3.a)
-list(APPEND SHARED_LIBRARIES ${LIBIGL_LIB_DIR}/libnanogui.a)
 
-set(EIGEN_INCLUDE_DIRS  ${LIBIGL_DIR}/external/nanogui/ext/eigen)
+### EIGEN
+set(EIGEN_INCLUDE_DIRS  ${LIBIGL_DIR}/external/eigen)
 include_directories(${EIGEN_INCLUDE_DIRS})
+
+### GLAD
+include_directories(${LIBIGL_DIR}/external/glad/include)
+list(APPEND SHARED_LIBRARIES ${LIBIGL_DIR}/external/glad/build/libglad.a)
+
+### IMGUI
+set (IMGUI_DIR   ${LIBIGL_DIR}/external/imgui)
+set(IMGUI_INCLUDE_DIRS ${IMGUI_DIR} ${IMGUI_DIR}/imgui )
+include_directories(${IMGUI_INCLUDE_DIRS})
+add_library(imgui
+${IMGUI_DIR}/imgui/imgui.cpp
+${IMGUI_DIR}/imgui/imgui_demo.cpp
+${IMGUI_DIR}/imgui/imgui_draw.cpp
+${IMGUI_DIR}/imgui_impl_glfw_gl3.cpp
+)
+list(APPEND SHARED_LIBRARIES imgui)
+
 
 # This is necessary to work around the static linking order dependencies on linux
 if(UNIX AND NOT APPLE)
