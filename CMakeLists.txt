@@ -3,26 +3,28 @@ cmake_minimum_required(VERSION 3.2)
 project(miniviewer)
 
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
-set(CMAKE_CXX_LINK_FLAGS "-framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo")
+#set(CMAKE_CXX_LINK_FLAGS "-framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo")
 
-set(LIBIGL_DIR /Users/$ENV{USER}/Dropbox/Work/code/other/libigl/)
+#set(LIBIGL_DIR /Users/$ENV{USER}/Dropbox/Work/code/other/libigl/)
+set(LIBIGL_DIR ${PROJECT_SOURCE_DIR}/../geom_preprocessing/external/TetWild/extern/libigl/)
 set(LIBIGL_INCLUDE_DIR ${LIBIGL_DIR}/include)
-set(LIBIGL_LIB_DIR ${LIBIGL_DIR}/lib)
+#set(LIBIGL_LIB_DIR ${LIBIGL_DIR}/lib)
 set(LIBIGL_INCLUDE_DIRS ${LIBIGL_INCLUDE_DIR})
 include_directories(${LIBIGL_INCLUDE_DIRS})
-set(LIBIGL_LIBRARIES
-${LIBIGL_LIB_DIR}/libigl_core.a
-${LIBIGL_LIB_DIR}/libigl_opengl_glfw.a
-${LIBIGL_LIB_DIR}/libigl_opengl_glfw_imgui.a
-${LIBIGL_LIB_DIR}/libigl_opengl.a
-)
+#set(LIBIGL_LIBRARIES
+#${LIBIGL_LIB_DIR}/libigl_core.a
+#${LIBIGL_LIB_DIR}/libigl_opengl_glfw.a
+#${LIBIGL_LIB_DIR}/libigl_opengl_glfw_imgui.a
+#${LIBIGL_LIB_DIR}/libigl_opengl.a
+#)
 
-add_definitions(-DIGL_STATIC_LIBRARY)
-list(APPEND SHARED_LIBRARIES ${LIBIGL_LIBRARIES})
-
+#add_definitions(-DIGL_STATIC_LIBRARY)
+#list(APPEND SHARED_LIBRARIES ${LIBIGL_LIBRARIES})
+add_definitions(-DLIBIGL_WITH_NANOGUI)
+add_definitions(-DIGL_VIEWER_WITH_NANOGUI)
 ### GLFW
 include_directories(${LIBIGL_DIR}/external/glfw/include)
-list(APPEND SHARED_LIBRARIES ${LIBIGL_LIB_DIR}/libglfw3.a)
+#list(APPEND SHARED_LIBRARIES ${LIBIGL_LIB_DIR}/libglfw3.a)
 
 ### EIGEN
 set(EIGEN_INCLUDE_DIRS  ${LIBIGL_DIR}/external/eigen)
@@ -30,7 +32,7 @@ include_directories(${EIGEN_INCLUDE_DIRS})
 
 ### GLAD
 include_directories(${LIBIGL_DIR}/external/glad/include)
-list(APPEND SHARED_LIBRARIES ${LIBIGL_DIR}/external/glad/build/libglad.a)
+#list(APPEND SHARED_LIBRARIES ${LIBIGL_DIR}/external/glad/build/libglad.a)
 
 ### IMGUI
 set (IMGUI_DIR   ${LIBIGL_DIR}/external/imgui)
