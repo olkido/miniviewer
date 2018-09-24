@@ -47,25 +47,83 @@ MatrixXd L,CL;
 
 std::string xmlFile = "camera.xml";
 
+igl::opengl::glfw::Viewer viewer;
+igl::opengl::glfw::imgui::ImGuiMenu menu;
+
 
 // Camera parameters
 struct Camera
 {
   Quaternionf trackball_angle;
   Eigen::Vector3f camera_translation;
+  Eigen::Vector3f camera_base_translation;
   double camera_base_zoom;
   double camera_zoom;
   bool is_valid = false;
 
+  
+  void read_from_xml(const std::string &xml_file)
+  {
+    Eigen::Vector4f ta;
+    igl::xml::deserialize_xml(ta,"trackball_angle",xml_file);
+    trackball_angle = Eigen::Quaternionf(ta);
+    igl::xml::deserialize_xml(camera_translation,"camera_translation",xml_file);
+    igl::xml::deserialize_xml(camera_base_translation,"camera_base_translation",xml_file);
+    igl::xml::deserialize_xml(camera_base_zoom,"camera_base_zoom",xml_file);
+    igl::xml::deserialize_xml(camera_zoom,"camera_zoom",xml_file);
+    is_valid = true;
+  }
+  
+  void write_to_xml(const std::string &xml_file)
+  {
+    // binary = false, overwrite = true
+    Eigen::Vector4f ta;
+    ta<< trackball_angle.x(), trackball_angle.y(), trackball_angle.z(), trackball_angle.w();
+    igl::xml::serialize_xml(ta,"trackball_angle",xmlFile,false,true);
+    // binary = false, overwrite = false
+    igl::xml::serialize_xml(camera_translation,"camera_translation",xmlFile,false,false);
+    igl::xml::serialize_xml(camera_base_translation,"camera_base_translation",xmlFile,false,false);
+    igl::xml::serialize_xml(camera_base_zoom,"camera_base_zoom",xmlFile,false,false);
+    igl::xml::serialize_xml(camera_zoom,"camera_zoom",xmlFile,false,false);
+
+  }
+
+  void load_from_viewer()
+  {
+    trackball_angle = viewer.core.trackball_angle;
+    camera_translation = viewer.core.camera_translation;
+    camera_base_translation = viewer.core.camera_base_translation;
+    camera_base_zoom = viewer.core.camera_base_zoom;
+    camera_zoom = viewer.core.camera_zoom;
+    is_valid = true;
+  }
+  
+  void save_to_viewer()
+  {
+    viewer.core.trackball_angle = trackball_angle;
+    viewer.core.camera_translation = camera_translation;
+    viewer.core.camera_base_translation = camera_base_translation;
+    viewer.core.camera_base_zoom = camera_base_zoom;
+    viewer.core.camera_zoom =  camera_zoom;
+  }
+  
+  bool is_same_as_viewer()
+  {
+    return (
+            trackball_angle.x() == viewer.core.trackball_angle.x() &&
+            trackball_angle.y() == viewer.core.trackball_angle.y() &&
+            trackball_angle.z() == viewer.core.trackball_angle.z() &&
+            trackball_angle.w() == viewer.core.trackball_angle.w() &&
+            camera_translation == viewer.core.camera_translation &&
+            camera_base_translation == viewer.core.camera_base_translation &&
+            camera_base_zoom == viewer.core.camera_base_zoom &&
+            camera_zoom == viewer.core.camera_zoom);
+  }
 };
 Camera camera;
 
 
 
-igl::opengl::glfw::Viewer viewer;
-igl::opengl::glfw::imgui::ImGuiMenu menu;
-
-#define MAXBUFSIZE  ((int) 1e6)
 
 float uv_scale = 1;
 bool show_mesh_stats = false;
@@ -74,8 +132,7 @@ int show_scene = 0;
 #define NUM_SCENE_OPTIONS 4; //no scene, angle, trans, zoom
 
 
-void update_display();
-
+#define MAXBUFSIZE  ((int) 1e6)
 MatrixXd readMatrix(const char *filename)
 {
   int cols = 0, rows = 0;
@@ -142,20 +199,14 @@ void line_texture(Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> &te
 
 void update_display()
 {
-  double diag = igl::bounding_box_diagonal(V);
-  
   viewer.data().lines            = Eigen::MatrixXd (0,9);
   viewer.data().points           = Eigen::MatrixXd (0,6);
   viewer.data().labels_positions = Eigen::MatrixXd (0,3);
   viewer.data().labels_strings.clear();
+  
+  // show texture
   if (UV.rows()>0 && FUV.rows() == F.rows())
   {
-    //        double minU = UV.col(0).minCoeff();
-    //        double maxU = UV.col(0).maxCoeff();
-    //        double minV = UV.col(1).minCoeff();
-    //        double maxV = UV.col(1).maxCoeff();
-    //        UV.col(0) << (UV.col(0).array() - minU) / (maxU-minU);
-    //        UV.col(1) << (UV.col(1).array() - minV) / (maxV-minV);
     viewer.data().set_uv(uv_scale*UV, FUV);
     viewer.data().show_texture = true;
     
@@ -164,6 +215,7 @@ void update_display()
     viewer.data().set_texture(texture_R, texture_B, texture_G);
   }
   
+  // show per-face vector field
   if (FVF.rows() == F.rows())
   {
     int n = FVF.cols() /3;
@@ -173,6 +225,7 @@ void update_display()
     viewer.data().add_points(B, Eigen::RowVector3d::Zero());
   }
   
+  // show lines
   if (L.rows()>0)
   {
     int n = L.cols() /6;
@@ -183,7 +236,7 @@ void update_display()
     
   }
   
-  
+  // plot mesh size
   int numV = V.rows();
   int numF = F.rows();
   if (show_mesh_stats)
@@ -193,11 +246,9 @@ void update_display()
     viewer.data().add_label(RowVector3d::Zero(), tag);
   }
   
-  
-
+  // plot camera parameters
   if (show_scene>0)
   {
-    
     RowVector3d pos = V.colwise().mean();// RowVector3d::Zero();
     std::string tag;
     if (show_scene==1)
@@ -275,34 +326,29 @@ bool key_down(igl::opengl::glfw::Viewer& viewer,
   return ret;
 }
 
+bool pre_draw(igl::opengl::glfw::Viewer& viewer)
+{
+  if (!camera.is_valid)
+    return false;
+  if (camera.is_same_as_viewer())
+    return false;
+  
+  camera.save_to_viewer();
+
+  return false;
+  
+}
 
 bool post_draw(igl::opengl::glfw::Viewer& viewer)
 {
-  if (
-      camera.trackball_angle.x() == viewer.core.trackball_angle.x() &&
-      camera.trackball_angle.y() == viewer.core.trackball_angle.y() &&
-      camera.trackball_angle.z() == viewer.core.trackball_angle.z() &&
-      camera.trackball_angle.w() == viewer.core.trackball_angle.w() &&
-      camera.camera_translation == viewer.core.camera_translation &&
-      camera.camera_base_zoom == viewer.core.camera_base_zoom &&
-      camera.camera_zoom == viewer.core.camera_zoom)
+  if (camera.is_same_as_viewer())
     return false;
   
   // store and write out the camera
-  camera.trackball_angle = viewer.core.trackball_angle;
-  camera.camera_translation = viewer.core.camera_translation;
-  camera.camera_base_zoom = viewer.core.camera_base_zoom;
-  camera.camera_zoom = viewer.core.camera_zoom;
+  camera.load_from_viewer();
   
   // XML serialization
-  // binary = false, overwrite = true
-  Eigen::Vector4f ta;
-  ta<< camera.trackball_angle.x(), camera.trackball_angle.y(), camera.trackball_angle.z(), camera.trackball_angle.w();
-  igl::xml::serialize_xml(ta,"trackball_angle",xmlFile,false,true);
-  // binary = false, overwrite = false
-  igl::xml::serialize_xml(camera.camera_translation,"camera_translation",xmlFile,false,false);
-  igl::xml::serialize_xml(camera.camera_base_zoom,"camera_base_zoom",xmlFile,false,false);
-  igl::xml::serialize_xml(camera.camera_zoom,"camera_zoom",xmlFile,false,false);
+  camera.write_to_xml(xmlFile);
   return false;
 
 
@@ -348,11 +394,23 @@ bool parse_arguments( std::vector<option::Option> &options)
   {
     MatrixXd T = readMatrix(options[FACE_VECTOR_FIELD].arg);
     FVF = T;
-    // vectors will be painted black
+    // by default, vectors will be painted black
     CFVF.setZero(FVF.rows(),3);
   }
 
-
+  // Read per-face vector field colors
+  if (options[FACE_VECTOR_FIELD_COLORS].count() > 0)
+  {
+    // Throw an error if per-face vector field was not provided
+    if (options[FACE_VECTOR_FIELD].count() == 0)
+    {
+      cerr<<"parse_arguments(): vector field colors provided but vector field was not."<<endl;
+      return false;
+    }
+    MatrixXd T = readMatrix(options[FACE_VECTOR_FIELD_COLORS].arg);
+    CFVF = T;
+  }
+  
   //Read texture coordinates
   if (options[UV_COORDS].count() > 0)
   {
@@ -393,6 +451,7 @@ bool parse_arguments( std::vector<option::Option> &options)
   {
     MatrixXd T = readMatrix(options[LINES].arg);
     L = T;
+    // by default, plot the lines black
     CL.setZero(L.rows(),3);
   }
 
@@ -412,15 +471,9 @@ bool parse_arguments( std::vector<option::Option> &options)
   // Read camera parameters
   if (options[CAMERA].count() > 0)
   {
-    Eigen::Vector4f ta;
-    igl::xml::deserialize_xml(ta,"trackball_angle",options[CAMERA].arg);
-    camera.trackball_angle = Eigen::Quaternionf(ta);
-    igl::xml::deserialize_xml(camera.camera_translation,"camera_translation",options[CAMERA].arg);
-    igl::xml::deserialize_xml(camera.camera_base_zoom,"camera_base_zoom",options[CAMERA].arg);
-    igl::xml::deserialize_xml(camera.camera_zoom,"camera_zoom",options[CAMERA].arg);
-
-    camera.is_valid = true;
+    camera.read_from_xml(options[CAMERA].arg);
   }
+  //todo: check sizes of overlays etc.
 
   return true;
 }
@@ -474,8 +527,6 @@ int main(int argc, char *argv[])
   if (!parse_arguments(options))
     exit(1);
   
-//  update_display();
-
   // Customize the menu
   const auto & default_menu_function = [&]()
   {
@@ -514,7 +565,8 @@ int main(int argc, char *argv[])
 //  
   viewer.callback_key_pressed = key_down;
   viewer.callback_post_draw = post_draw;
-  
+  viewer.callback_pre_draw = pre_draw;
+
   viewer.data().clear();
   viewer.data().lines.resize(0,9);
   viewer.data().points.resize(0,6);
@@ -525,17 +577,7 @@ int main(int argc, char *argv[])
   viewer.data().line_color<<173./255,174./255,103./255,1.;
   viewer.data().show_lines = false;
   viewer.data().show_texture = false;
-  viewer.data().face_based = false;
-  
-  
-  //    viewer.core.view.setIdentity();
-  if(camera.is_valid)
-  {
-    viewer.core.trackball_angle = camera.trackball_angle;
-    viewer.core.camera_translation = camera.camera_translation;
-    viewer.core.camera_base_zoom = camera.camera_base_zoom;
-    viewer.core.camera_zoom =  camera.camera_zoom;
-  }
+  viewer.data().face_based = true;
   
   update_display();
   viewer.launch();

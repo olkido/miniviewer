@@ -57,7 +57,7 @@ struct Arg: public option::Arg
 };
 
 
-enum  optionIndex { UNKNOWN, HELP, COLORS, SCALAR_FIELD, FACE_VECTOR_FIELD, UV_COORDS, UV_INDS, LINES, LINE_COLORS, CAMERA};
+enum  optionIndex { UNKNOWN, HELP, COLORS, SCALAR_FIELD, FACE_VECTOR_FIELD, FACE_VECTOR_FIELD_COLORS, UV_COORDS, UV_INDS, LINES, LINE_COLORS, CAMERA};
 const option::Descriptor usage[] =
 {
   {UNKNOWN, 0, "", "",Arg::None, "USAGE: smallMeshParser [options] input_directory output_directory\n\n"
@@ -67,6 +67,7 @@ const option::Descriptor usage[] =
   {COLORS, 0,"", "colors", Arg::Required, "  --colors  \tFilename including per-vertex / per-face colors." },
   {SCALAR_FIELD, 0,"", "scalar", Arg::Required, "  --scalar  \tFilename including per-vertex / per-face scalar values." },
   {FACE_VECTOR_FIELD, 0,"","fvf",Arg::Required, "  --fvf  \tFilename including per-face vector field." },
+  {FACE_VECTOR_FIELD_COLORS, 0,"","fvf_colors",Arg::Required, "  --fvf_colors  \tFilename including per-face vector field colors." },
   {UV_COORDS, 0,"","uv",Arg::Required, "  --uv  \tFilename including uv texture coordinates. If provided, corner texture indices also need to be provided (option --fuv)." },
   {UV_INDS, 0,"","fuv",Arg::Required, "  --fuv  \tFilename including corner texture indices. If provided, uv texture coordinates also need to be provided (option --uv)." },
   {LINES, 0,"","lines",Arg::Required, "  --lines  \tFilename including line start and end points." },
