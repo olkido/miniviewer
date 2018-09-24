@@ -2,6 +2,7 @@
 cmake_minimum_required(VERSION 3.2)
 project(miniviewer)
 
+message ("cmake: provide the path to libigl via -DLIBIGLDIR=<path_to_libigl>")
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 #set(CMAKE_CXX_LINK_FLAGS "-framework OpenGL -framework Cocoa -framework IOKit -framework CoreVideo")
 
