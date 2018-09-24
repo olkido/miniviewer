@@ -45,9 +45,10 @@ MatrixXd FVF, CFVF;
 // Overlay lines and line colors
 MatrixXd L,CL;
 
-// Camera parameters - serializable
-// I'm actually not using binary serialization so this is quite
-// unnecessary, but let's keep it here for now.
+std::string xmlFile = "camera.xml";
+
+
+// Camera parameters
 struct Camera
 {
   Quaternionf trackball_angle;
@@ -193,24 +194,9 @@ void update_display()
   }
   
   
-  camera.trackball_angle = viewer.core.trackball_angle;
-  camera.camera_translation = viewer.core.camera_translation;
-  camera.camera_base_zoom = viewer.core.camera_base_zoom;
-  camera.camera_zoom = viewer.core.camera_zoom;
 
   if (show_scene>0)
   {
-    // XML serialization
-    std::string xmlFile = "camera.xml";
-    // binary = false, overwrite = true
-    Eigen::Vector4f ta;
-    ta<< camera.trackball_angle.x(), camera.trackball_angle.y(), camera.trackball_angle.z(), camera.trackball_angle.w();
-    igl::xml::serialize_xml(ta,"trackball_angle",xmlFile,false,true);
-    // binary = false, overwrite = false
-    igl::xml::serialize_xml(camera.camera_translation,"camera_translation",xmlFile,false,false);
-    igl::xml::serialize_xml(camera.camera_base_zoom,"camera_base_zoom",xmlFile,false,false);
-    igl::xml::serialize_xml(camera.camera_zoom,"camera_zoom",xmlFile,false,false);
-
     
     RowVector3d pos = V.colwise().mean();// RowVector3d::Zero();
     std::string tag;
@@ -289,6 +275,38 @@ bool key_down(igl::opengl::glfw::Viewer& viewer,
   return ret;
 }
 
+
+bool post_draw(igl::opengl::glfw::Viewer& viewer)
+{
+  if (
+      camera.trackball_angle.x() == viewer.core.trackball_angle.x() &&
+      camera.trackball_angle.y() == viewer.core.trackball_angle.y() &&
+      camera.trackball_angle.z() == viewer.core.trackball_angle.z() &&
+      camera.trackball_angle.w() == viewer.core.trackball_angle.w() &&
+      camera.camera_translation == viewer.core.camera_translation &&
+      camera.camera_base_zoom == viewer.core.camera_base_zoom &&
+      camera.camera_zoom == viewer.core.camera_zoom)
+    return false;
+  
+  // store and write out the camera
+  camera.trackball_angle = viewer.core.trackball_angle;
+  camera.camera_translation = viewer.core.camera_translation;
+  camera.camera_base_zoom = viewer.core.camera_base_zoom;
+  camera.camera_zoom = viewer.core.camera_zoom;
+  
+  // XML serialization
+  // binary = false, overwrite = true
+  Eigen::Vector4f ta;
+  ta<< camera.trackball_angle.x(), camera.trackball_angle.y(), camera.trackball_angle.z(), camera.trackball_angle.w();
+  igl::xml::serialize_xml(ta,"trackball_angle",xmlFile,false,true);
+  // binary = false, overwrite = false
+  igl::xml::serialize_xml(camera.camera_translation,"camera_translation",xmlFile,false,false);
+  igl::xml::serialize_xml(camera.camera_base_zoom,"camera_base_zoom",xmlFile,false,false);
+  igl::xml::serialize_xml(camera.camera_zoom,"camera_zoom",xmlFile,false,false);
+  return false;
+
+
+}
 
 bool parse_arguments( std::vector<option::Option> &options)
 {
@@ -495,6 +513,7 @@ int main(int argc, char *argv[])
 //
 //  
   viewer.callback_key_pressed = key_down;
+  viewer.callback_post_draw = post_draw;
   
   viewer.data().clear();
   viewer.data().lines.resize(0,9);

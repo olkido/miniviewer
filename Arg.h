@@ -63,6 +63,7 @@ const option::Descriptor usage[] =
   {UNKNOWN, 0, "", "",Arg::None, "USAGE: smallMeshParser [options] input_directory output_directory\n\n"
     "Options:" },
   {HELP, 0,"", "help",Arg::None, "  --help  \tPrint usage and exit." },
+  {CAMERA, 0,"c","camera",Arg::Required, "  --camera, -c  \tFilename (xml) including camera pose parameters." },
   {COLORS, 0,"", "colors", Arg::Required, "  --colors  \tFilename including per-vertex / per-face colors." },
   {SCALAR_FIELD, 0,"", "scalar", Arg::Required, "  --scalar  \tFilename including per-vertex / per-face scalar values." },
   {FACE_VECTOR_FIELD, 0,"","fvf",Arg::Required, "  --fvf  \tFilename including per-face vector field." },
@@ -70,7 +71,6 @@ const option::Descriptor usage[] =
   {UV_INDS, 0,"","fuv",Arg::Required, "  --fuv  \tFilename including corner texture indices. If provided, uv texture coordinates also need to be provided (option --uv)." },
   {LINES, 0,"","lines",Arg::Required, "  --lines  \tFilename including line start and end points." },
   {LINE_COLORS, 0,"","line_colors",Arg::Required, "  --line_colors  \tFilename including line colors. If provided, line start and end points also need to be provided (option --lines)." },
-  {CAMERA, 0,"c","camera",Arg::Required, "  --camera, -c  \tFilename including camera pose parameters, in the order : trackball_angle, camera_translation, camera_base_zoom, camera_zoom." },
   {UNKNOWN, 0, "", "",Arg::None, "\nExamples:\n"
     "  example --unknown -- --this_is_no_option\n"
     "  example -unk --plus -ppp file1 file2\n" },
