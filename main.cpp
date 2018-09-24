@@ -12,24 +12,54 @@
 #include <igl/jet.h>
 #include <igl/barycenter.h>
 #include <igl/bounding_box_diagonal.h>
+#include <igl/xml/serialize_xml.h>
 
 #include <iostream>
 #include <fstream>
 #include <string>
 
+#include "optionparser.h"
+#include "Arg.h"
+
 using namespace Eigen;
 using namespace std;
+
+std::string meshfile;
+
+// Mesh: vertices and faces
 Eigen::MatrixXd V;
 Eigen::MatrixXi F;
+// Face Barycenters
+MatrixXd B;
+
+// Colors (per-vertex or per-face)
 Eigen::MatrixXd C;
-MatrixXd UV, N, FVF, CFVF;
+
+// Texture coordinates and corner indices
+MatrixXd UV;
 MatrixXi FUV, FN;
-MatrixXd B,L,CL;
-Quaternionf trackball_angle;
-Eigen::Vector3f model_translation;
-double camera_zoom;
-double model_zoom;
-bool has_scene = false;
+
+// Per-face vector field and colors
+MatrixXd FVF, CFVF;
+
+// Overlay lines and line colors
+MatrixXd L,CL;
+
+// Camera parameters - serializable
+// I'm actually not using binary serialization so this is quite
+// unnecessary, but let's keep it here for now.
+struct Camera
+{
+  Quaternionf trackball_angle;
+  Eigen::Vector3f camera_translation;
+  double camera_base_zoom;
+  double camera_zoom;
+  bool is_valid = false;
+
+};
+Camera camera;
+
+
 
 igl::opengl::glfw::Viewer viewer;
 igl::opengl::glfw::imgui::ImGuiMenu menu;
@@ -39,6 +69,7 @@ igl::opengl::glfw::imgui::ImGuiMenu menu;
 float uv_scale = 1;
 bool show_mesh_stats = false;
 int show_scene = 0;
+
 #define NUM_SCENE_OPTIONS 4; //no scene, angle, trans, zoom
 
 
@@ -108,18 +139,6 @@ void line_texture(Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> &te
   texture_B = texture_R;
 }
 
-
-/*
- 
- bool init_viewer(igl::opengl::glfw::Viewer& viewer)
- {
- // Generate menu
- viewer.screen->performLayout();
- 
- return false;
- };
- 
- */
 void update_display()
 {
   double diag = igl::bounding_box_diagonal(V);
@@ -174,42 +193,29 @@ void update_display()
   }
   
   
-  
+  camera.trackball_angle = viewer.core.trackball_angle;
+  camera.camera_translation = viewer.core.camera_translation;
+  camera.camera_base_zoom = viewer.core.camera_base_zoom;
+  camera.camera_zoom = viewer.core.camera_zoom;
+
   if (show_scene>0)
   {
-    ofstream ofs;
-    ofs.open("/Users/olkido/Dropbox/Work/code/mine/miniviewer/scene.txt");
-    
-    ofs<<"----- CAMERA PARAMETERS -----"<<endl;
-    VectorXd t(Vector4d (viewer.core.trackball_angle.x(),
-                         viewer.core.trackball_angle.y(),
-                         viewer.core.trackball_angle.z(),
-                         viewer.core.trackball_angle.w()
-                         ));
-    ofs<<igl::matlab_format(t.transpose().eval(),"TANGLE")<<endl;
-    ofs<<igl::matlab_format(viewer.core.model_translation.transpose().eval(), "TTRANS")<<endl;
-    ofs<<" CZOOM = [" <<endl<<viewer.core.camera_zoom<<endl<<"];"<<endl;
-    ofs<<" MZOOM = [" <<endl<<viewer.core.model_zoom<<endl<<"];"<<endl;
-    
-    ofs<<" viewer.core.model_zoom_uv = " <<viewer.core.model_zoom_uv<<endl;
-    ofs<<" viewer.core.model_translation_uv = " <<igl::matlab_format(viewer.core.model_translation_uv.transpose().eval())<<endl;
-    ofs<<" viewer.core.orthographic = " <<viewer.core.orthographic<<endl;
-    ofs<<" viewer.core.camera_eye = " <<igl::matlab_format(viewer.core.camera_eye.transpose().eval())<<endl;
-    ofs<<" viewer.core.camera_up = " <<igl::matlab_format(viewer.core.camera_up.transpose().eval())<<endl;
-    ofs<<" viewer.core.camera_center = " <<igl::matlab_format(viewer.core.camera_center.transpose().eval())<<endl;
-    ofs<<" viewer.core.camera_view_angle = " <<viewer.core.camera_view_angle<<endl;
-    ofs<<" viewer.core.camera_dnear = " <<viewer.core.camera_dnear<<endl;
-    ofs<<" viewer.core.camera_dfar = " <<viewer.core.camera_dfar<<endl;
-    MatrixXf mv(viewer.core.model * viewer.core.view);
-    ofs<<igl::matlab_format(mv.topLeftCorner(3, 3).eval(),"mv_r")<<endl;
-    ofs<<igl::matlab_format(mv.topRightCorner(3, 1).eval(),"mv_t")<<endl;
-    ofs.close();
-    
+    // XML serialization
+    std::string xmlFile = "camera.xml";
+    // binary = false, overwrite = true
+    Eigen::Vector4f ta;
+    ta<< camera.trackball_angle.x(), camera.trackball_angle.y(), camera.trackball_angle.z(), camera.trackball_angle.w();
+    igl::xml::serialize_xml(ta,"trackball_angle",xmlFile,false,true);
+    // binary = false, overwrite = false
+    igl::xml::serialize_xml(camera.camera_translation,"camera_translation",xmlFile,false,false);
+    igl::xml::serialize_xml(camera.camera_base_zoom,"camera_base_zoom",xmlFile,false,false);
+    igl::xml::serialize_xml(camera.camera_zoom,"camera_zoom",xmlFile,false,false);
+
     
     RowVector3d pos = V.colwise().mean();// RowVector3d::Zero();
     std::string tag;
     if (show_scene==1)
-      tag = "TANGLE: "
+      tag = "trackball_angle: "
       +to_string(viewer.core.trackball_angle.x())
       +", "
       +to_string(viewer.core.trackball_angle.y())
@@ -219,18 +225,18 @@ void update_display()
       +to_string(viewer.core.trackball_angle.w())
       ;
     else if (show_scene==2)
-      tag = "TRANS: "
-      +to_string(viewer.core.model_translation.x())
+      tag = "camera_translation: "
+      +to_string(viewer.core.camera_translation.x())
       +", "
-      +to_string(viewer.core.model_translation.y())
+      +to_string(viewer.core.camera_translation.y())
       +", "
-      +to_string(viewer.core.model_translation.z())
+      +to_string(viewer.core.camera_translation.z())
       ;
     else if (show_scene==3)
-      tag = "CZOOM: "
+      tag = "camera_base_zoom: "
+      +to_string(viewer.core.camera_base_zoom)
+      +" camera_zoom: "
       +to_string(viewer.core.camera_zoom)
-      +" MZOOM: "
-      +to_string(viewer.core.model_zoom)
       ;
     viewer.data().add_label(pos, tag);
     viewer.data().add_label(pos, tag);
@@ -284,175 +290,174 @@ bool key_down(igl::opengl::glfw::Viewer& viewer,
 }
 
 
-bool parse_arguments(int argc, char *argv[])
+bool parse_arguments( std::vector<option::Option> &options)
 {
   
-  int current_argument = 2;
-  std::string argument;
-  while (current_argument < argc)
+  // Throw an error if both a color and a scalar field is provided
+  if (options[COLORS].count() > 0 && options[SCALAR_FIELD].count()>0)
   {
-    argument = std::string(argv[current_argument]);
-    if (argument.compare("-colors")==0)
-    {
-      current_argument ++;
-      if (current_argument>=argc)
-      {
-        cerr<<"colors: Filename for colors not provided"<<endl;
-        return false;
-      }
-      argument = std::string(argv[current_argument]);
-      MatrixXd T = readMatrix(argument.c_str());
-      if (T.cols() == 3)
-        C = T;
-      else
-        igl::jet(T, true, C);
-      
-    }
-    else if (argument.compare("-fvf")==0)
-    {
-      current_argument ++;
-      if (current_argument>=argc)
-      {
-        cerr<<"fvf: Filename for face-based vector field not provided"<<endl;
-        return false;
-      }
-      argument = std::string(argv[current_argument]);
-      MatrixXd T = readMatrix(argument.c_str());
-      FVF = T;
-      CFVF.setZero(FVF.rows(),3);
-      
-      current_argument ++;
-      if (current_argument>=argc)
-        cerr<<"FVF: Filename for colors not provided"<<endl;
-      else
-      {
-        argument = std::string(argv[current_argument]);
-        CFVF = readMatrix(argument.c_str());
-        if ((CFVF.cols() != FVF.cols()) || (CFVF.rows() != FVF.rows()))
-          cerr<<"Colors for vector field is the wrong size"<<endl;
-      }
-    }
-    else if (argument.compare("-texcoords")==0)
-    {
-      current_argument ++;
-      if (current_argument>=argc)
-      {
-        cerr<<"scene: Filename for texture coordinates not provided"<<endl;
-        return false;
-      }
-      argument = std::string(argv[current_argument]);
-      UV = readMatrix(argument.c_str());
-      
-      current_argument ++;
-      if (current_argument>=argc)
-      {
-        cerr<<"texcoords: Filename for corner indices not provided"<<endl;
-        return false;
-      }
-      argument = std::string(argv[current_argument]);
-      MatrixXd FUV_d = readMatrix(argument.c_str());
-      FUV = FUV_d.cast<int>();
-      if ((FUV.cols() != F.cols()) || (FUV.rows() != F.rows()))
-      {
-        cerr<<"Texture corner indices are of wrong size"<<endl;
-        return false;
-      }
-    }
-    else if (argument.compare("-lines")==0)
-    {
-      current_argument ++;
-      if (current_argument>=argc)
-      {
-        cerr<<"lines: Filename for lines not provided"<<endl;
-        return false;
-      }
-      argument = std::string(argv[current_argument]);
-      MatrixXd T = readMatrix(argument.c_str());
-      L = T;
-      CL.setZero(L.rows(),3);
-      
-      current_argument ++;
-      if (current_argument>=argc)
-        cerr<<"lines: Filename for line colors not provided"<<endl;
-      else
-      {
-        argument = std::string(argv[current_argument]);
-        T = readMatrix(argument.c_str());
-        if ((T.cols()*2 != L.cols()) || (T.rows() != L.rows()))
-          cerr<<"Colors for lines is the wrong size"<<endl;
-        CL = T;
-      }
-      
-    }
-    else if (argument.compare("-scene")==0)
-    {
-      has_scene = true;
-      current_argument ++;
-      if (current_argument>=argc)
-      {
-        cerr<<"scene: Filename for scene parameters not provided"<<endl;
-        return false;
-      }
-      argument = std::string(argv[current_argument]);
-      ifstream ifs;
-      ifs.open(argument.c_str(),std::ifstream::in);
-      if (!ifs.is_open())
-      {
-        cerr<<"scene: Filename for scene parameters cannot be opened"<<endl;
-        return false;
-      }
-      double x,y,z,w;
-      ifs>>x;
-      ifs>>y;
-      ifs>>z;
-      ifs>>w;
-      trackball_angle=Quaternionf(w,x,y,z);
-      ifs>>x;
-      ifs>>y;
-      ifs>>z;
-      model_translation<<x,y,z;
-      ifs>>x;
-      camera_zoom= x;
-      ifs>>x;
-      model_zoom= x;
-      ifs.close();
-    }
+    cerr<<"parse_arguments(): Provide either colors or scalar field, not both."<<endl;
+    return false;
+  }
+
     
-    current_argument ++;
+  // Read per-vertex / per-face colors
+  if (options[COLORS].count() > 0)
+  {
+    MatrixXd T = readMatrix(options[COLORS].arg);
+    if (T.cols() != 3)
+    {
+      cerr<<"parse_arguments(): Input color matrix should have 3 columns."<<endl;
+      return false;
+    }
+    C = T;
   }
   
+  // Read per-vertex / per-face scalar field
+  if (options[SCALAR_FIELD].count() > 0)
+  {
+    MatrixXd T = readMatrix(options[COLORS].arg);
+    if (T.cols() != 1)
+    {
+      cerr<<"parse_arguments(): Input scalar field matrix should have 1 column."<<endl;
+      return false;
+    }
+    igl::jet(T, true, C);
+  }
+
+  // Read per-face vector field
+  if (options[FACE_VECTOR_FIELD].count() > 0)
+  {
+    MatrixXd T = readMatrix(options[FACE_VECTOR_FIELD].arg);
+    FVF = T;
+    // vectors will be painted black
+    CFVF.setZero(FVF.rows(),3);
+  }
+
+
+  //Read texture coordinates
+  if (options[UV_COORDS].count() > 0)
+  {
+    // Throw an error if texture corner indices were not provided
+    if (options[UV_INDS].count() == 0)
+    {
+      cerr<<"parse_arguments(): uv coordinates provided but texture corner indices were not."<<endl;
+      return false;
+    }
+    MatrixXd T = readMatrix(options[UV_COORDS].arg);
+    if (T.cols() != 2)
+    {
+      cerr<<"parse_arguments(): Input uv coordinates matrix should have 2 columns."<<endl;
+      return false;
+    }
+    UV = T;
+  }
+
+  if (options[UV_INDS].count() > 0)
+  {
+    // Throw an error if uv coordinates were not provided
+    if (options[UV_COORDS].count() == 0)
+    {
+      cerr<<"parse_arguments(): texture corner indices provided but uv coordinates were not."<<endl;
+      return false;
+    }
+    MatrixXd T = readMatrix(options[UV_INDS].arg);
+    if (T.cols() != 2)
+    {
+      cerr<<"parse_arguments(): Input texture corner indices matrix should have 3 columns."<<endl;
+      return false;
+    }
+    FUV = T.cast<int>();
+  }
+
+  // Read lines
+  if (options[LINES].count() > 0)
+  {
+    MatrixXd T = readMatrix(options[LINES].arg);
+    L = T;
+    CL.setZero(L.rows(),3);
+  }
+
+  // Read line colors
+  if (options[LINE_COLORS].count() > 0)
+  {
+    // Throw an error if lines were not provided
+    if (options[LINES].count() == 0)
+    {
+      cerr<<"parse_arguments(): line colors provided but lines were not."<<endl;
+      return false;
+    }
+    MatrixXd T = readMatrix(options[LINE_COLORS].arg);
+    CL = T;
+  }
+  
+  // Read camera parameters
+  if (options[CAMERA].count() > 0)
+  {
+    Eigen::Vector4f ta;
+    igl::xml::deserialize_xml(ta,"trackball_angle",options[CAMERA].arg);
+    camera.trackball_angle = Eigen::Quaternionf(ta);
+    igl::xml::deserialize_xml(camera.camera_translation,"camera_translation",options[CAMERA].arg);
+    igl::xml::deserialize_xml(camera.camera_base_zoom,"camera_base_zoom",options[CAMERA].arg);
+    igl::xml::deserialize_xml(camera.camera_zoom,"camera_zoom",options[CAMERA].arg);
+
+    camera.is_valid = true;
+  }
+
   return true;
 }
 
 int main(int argc, char *argv[])
 {
-  if (argc<2)
+  
+  argc-=(argc>0); argv+=(argc>0); // skip program name argv[0] if present
+  
+  option::Stats  stats(usage, argc, argv);
+  std::vector<option::Option> options(stats.options_max);
+  std::vector<option::Option> buffer(stats.buffer_max);
+  option::Parser parse(usage, argc, argv, &options[0], &buffer[0]);
+  
+  if (parse.error())
+    return 1;
+  
+  if (options[HELP] || argc == 0)
   {
-    cerr<<"miniViewer requires at least one argument (the mesh file)"<<endl;
+    option::printUsage(std::cout, usage);
     return 0;
   }
   
+  
+  for (option::Option* opt = options[UNKNOWN]; opt; opt = opt->next())
+    std::cout << "Unknown option: " << std::string(opt->name,opt->namelen) << "\n";
+  
+  for (int i = 0; i < parse.nonOptionsCount(); ++i)
+    std::cout << "Non-option #" << i << ": " << parse.nonOption(i) << "\n";
+  
+  if ( parse.nonOptionsCount() !=1 )
+  {
+    option::printUsage(std::cout, usage);
+    return 0;
+  }
+  
+  std::string meshfile = string(parse.nonOption(0));
+  
   // dirname, basename, extension and filename
   std::string dir,  base,  ext,  name;
-  igl::pathinfo(std::string(argv[1]),dir,base,ext,name);
+  igl::pathinfo(meshfile,dir,base,ext,name);
   transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
   
-  if(ext == "obj")
-    igl::readOBJ(argv[1], V, UV, N, F, FUV, FN);
-  else if(ext == "off")
-    igl::readOFF(argv[1], V, F);
-  else
-    igl::read_triangle_mesh(argv[1], V, F);
+  // read mesh
+  igl::read_triangle_mesh(meshfile, V, F);
   
   
   igl::barycenter(V, F, B);
   C.setConstant(F.rows(),3,.99);
 
-  if (!parse_arguments(argc, argv))
+  if (!parse_arguments(options))
     exit(1);
   
-  update_display();
-  
+//  update_display();
+
   // Customize the menu
   const auto & default_menu_function = [&]()
   {
@@ -460,7 +465,7 @@ int main(int argc, char *argv[])
     menu.draw_viewer_menu();
     
     // Add new group to *existing* viewer menut
-    if (ImGui::CollapsingHeader("New Group", ImGuiTreeNodeFlags_DefaultOpen))
+    if (ImGui::CollapsingHeader("miniviewer", ImGuiTreeNodeFlags_DefaultOpen))
     {
       // Expose variable directly ...
       if (ImGui::InputFloat("UV scale", &uv_scale, 0, 0, 3))
@@ -505,12 +510,12 @@ int main(int argc, char *argv[])
   
   
   //    viewer.core.view.setIdentity();
-  if(has_scene)
+  if(camera.is_valid)
   {
-    viewer.core.trackball_angle = trackball_angle;
-    viewer.core.model_translation = model_translation;
-    viewer.core.camera_zoom= camera_zoom;
-    viewer.core.model_zoom=  model_zoom;
+    viewer.core.trackball_angle = camera.trackball_angle;
+    viewer.core.camera_translation = camera.camera_translation;
+    viewer.core.camera_base_zoom = camera.camera_base_zoom;
+    viewer.core.camera_zoom =  camera.camera_zoom;
   }
   
   update_display();

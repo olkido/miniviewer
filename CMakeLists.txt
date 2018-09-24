@@ -7,7 +7,7 @@ SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 
 
 # pass libigl directory as input to CMake via the variable LIBIGL_DIR
-#set(LIBIGL_DIR /Users/$ENV{USER}/Dropbox/Work/code/other/libigl/)
+#set(LIBIGL_DIR /Users/$ENV{USER}/Dropbox/Work/code/libigl/)
 #set(LIBIGL_DIR ${PROJECT_SOURCE_DIR}/../geom_preprocessing/external/TetWild/extern/libigl/)
 set(LIBIGL_INCLUDE_DIR ${LIBIGL_DIR}/include)
 #set(LIBIGL_LIB_DIR ${LIBIGL_DIR}/lib)
@@ -66,6 +66,17 @@ ${IMGUI_DIR}/imgui_impl_glfw_gl3.cpp
 )
 list(APPEND SHARED_LIBRARIES imgui)
 
+
+### XML
+set (TINYXML2_DIR   ${LIBIGL_DIR}/external/tinyxml2)
+set(TINYXML_INCLUDE_DIRS ${TINYXML2_DIR} )
+include_directories(${TINYXML_INCLUDE_DIRS})
+add_library(tinyxml2 STATIC ${TINYXML2_DIR}/tinyxml2.cpp ${TINYXML2_DIR}/tinyxml2.h)
+set_target_properties(tinyxml2 PROPERTIES
+COMPILE_DEFINITIONS "TINYXML2_EXPORT"
+VERSION "3.0.0"
+SOVERSION "3")
+list(APPEND SHARED_LIBRARIES tinyxml2)
 
 # This is necessary to work around the static linking order dependencies on linux
 if(UNIX AND NOT APPLE)
