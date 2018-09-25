@@ -3,10 +3,10 @@
 # with a camera whose parameters are given in a filename
 # in an input directory, and saves screenshots  in an output directory.
 # Screenshots will have the same names as the meshes.
-echo ""
+echo " "
 echo "*** USAGE: sh viewDirectory.sh <input_directory> <mesh suffix> <camera_file> <output_directory> ***"
 echo "*** NOTE: mesh suffix SHOULD NOT contain a dot . ***"
-echo ""
+echo " "
 in_directory=$1
 echo in_directory : ["$in_directory"]
 suffix=$2
