@@ -79,6 +79,20 @@ VERSION "3.0.0"
 SOVERSION "3")
 list(APPEND SHARED_LIBRARIES tinyxml2)
 
+### PNG
+set(STB_IMAGE_DIR "${LIBIGL_DIR}/external/stb_image")
+include_directories(${STB_IMAGE_DIR})
+include_directories(${CMAKE_CURRENT_BINARY_DIR})
+add_library(igl_stb_image
+${STB_IMAGE_DIR}/igl_stb_image.cpp
+${STB_IMAGE_DIR}/stb_image.h
+${STB_IMAGE_DIR}/stb_image_write.h
+)
+include(GenerateExportHeader)
+generate_export_header(igl_stb_image)
+list(APPEND SHARED_LIBRARIES igl_stb_image)
+
+
 # This is necessary to work around the static linking order dependencies on linux
 if(UNIX AND NOT APPLE)
   set(SHARED_LIBRARIES ${SHARED_LIBRARIES} ${SHARED_LIBRARIES})

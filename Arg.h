@@ -57,7 +57,7 @@ struct Arg: public option::Arg
 };
 
 
-enum  optionIndex { UNKNOWN, HELP, COLORS, SCALAR_FIELD, FACE_VECTOR_FIELD, FACE_VECTOR_FIELD_COLORS, UV_COORDS, UV_INDS, LINES, LINE_COLORS, CAMERA};
+enum  optionIndex { UNKNOWN, HELP, COLORS, SCALAR_FIELD, FACE_VECTOR_FIELD, FACE_VECTOR_FIELD_COLORS, UV_COORDS, UV_INDS, LINES, LINE_COLORS, CAMERA, SAVE_PNG};
 const option::Descriptor usage[] =
 {
   {UNKNOWN, 0, "", "",Arg::None, "USAGE: smallMeshParser [options] input_directory output_directory\n\n"
@@ -72,6 +72,7 @@ const option::Descriptor usage[] =
   {UV_INDS, 0,"","fuv",Arg::Required, "  --fuv  \tFilename including corner texture indices. If provided, uv texture coordinates also need to be provided (option --uv)." },
   {LINES, 0,"","lines",Arg::Required, "  --lines  \tFilename including line start and end points." },
   {LINE_COLORS, 0,"","line_colors",Arg::Required, "  --line_colors  \tFilename including line colors. If provided, line start and end points also need to be provided (option --lines)." },
+  {SAVE_PNG, 0,"","png",Arg::Required, "  --png  \tFilename to which to save a .png screenshot." },
   {UNKNOWN, 0, "", "",Arg::None, "\nExamples:\n"
     "  example --unknown -- --this_is_no_option\n"
     "  example -unk --plus -ppp file1 file2\n" },

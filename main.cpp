@@ -13,6 +13,7 @@
 #include <igl/barycenter.h>
 #include <igl/bounding_box_diagonal.h>
 #include <igl/xml/serialize_xml.h>
+#include <igl/png/writePNG.h>
 
 #include <iostream>
 #include <fstream>
@@ -25,6 +26,7 @@ using namespace Eigen;
 using namespace std;
 
 std::string meshfile;
+std::string pngfile;
 
 // Mesh: vertices and faces
 Eigen::MatrixXd V;
@@ -49,6 +51,13 @@ std::string xmlFile = "camera.xml";
 
 igl::opengl::glfw::Viewer viewer;
 igl::opengl::glfw::imgui::ImGuiMenu menu;
+bool first_launch = true;
+
+// Pre-allocate buffers for screenshot
+Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> imR(640,400);
+Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> imG(640,400);
+Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> imB(640,400);
+Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> imA(640,400);
 
 
 // Camera parameters
@@ -339,20 +348,45 @@ bool pre_draw(igl::opengl::glfw::Viewer& viewer)
   
 }
 
-bool post_draw(igl::opengl::glfw::Viewer& viewer)
+void save_scene()
 {
-  if (camera.is_same_as_viewer())
-    return false;
-  
-  // store and write out the camera
-  camera.load_from_viewer();
-  
   // XML serialization
   camera.write_to_xml(xmlFile);
-  return false;
-
-
+  
+  // (optional) write screenshot to .png
+  if (!pngfile.empty())
+  {
+    // Draw the scene in the buffers
+    viewer.core.draw_buffer(viewer.data(),false,imR,imG,imB,imA);
+    // Save it to a PNG
+    igl::png::writePNG(imR,imG,imB,imA,pngfile);
+  }
 }
+
+bool post_draw(igl::opengl::glfw::Viewer& viewer)
+{
+  // store and write out the camera
+  camera.load_from_viewer();
+  if (first_launch)
+  {
+    save_scene();
+    first_launch = false;
+  }
+  return false;
+}
+bool mouse_up(igl::opengl::glfw::Viewer& viewer, int button, int modifier)
+{
+  save_scene();
+  return false;
+}
+
+bool mouse_scroll(igl::opengl::glfw::Viewer& viewer, float delta_y)
+{
+  if(delta_y != 0)
+    save_scene();
+  return false;
+}
+
 
 bool parse_arguments( std::vector<option::Option> &options)
 {
@@ -473,6 +507,13 @@ bool parse_arguments( std::vector<option::Option> &options)
   {
     camera.read_from_xml(options[CAMERA].arg);
   }
+
+  // Read .png filename for screenshot
+  if (options[SAVE_PNG].count() > 0)
+  {
+    pngfile = options[SAVE_PNG].arg;
+  }
+
   //todo: check sizes of overlays etc.
 
   return true;
@@ -566,6 +607,8 @@ int main(int argc, char *argv[])
   viewer.callback_key_pressed = key_down;
   viewer.callback_post_draw = post_draw;
   viewer.callback_pre_draw = pre_draw;
+  viewer.callback_mouse_up = mouse_up;
+  viewer.callback_mouse_scroll = mouse_scroll;
 
   viewer.data().clear();
   viewer.data().lines.resize(0,9);
