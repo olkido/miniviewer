@@ -7,6 +7,16 @@ echo " "
 echo "*** USAGE: sh viewDirectory.sh <input_directory> <mesh suffix> <camera_file> <output_directory> ***"
 echo "*** NOTE: mesh suffix SHOULD NOT contain a dot . ***"
 echo " "
+
+num_args=$#
+if [ $num_args -lt 4 ]
+then
+  echo "Wrong number of arguments."
+  exit 1
+fi
+
+echo " "
+echo " -- Input --"
 in_directory=$1
 echo in_directory : ["$in_directory"]
 suffix=$2
@@ -15,7 +25,15 @@ camera_file=$3
 echo camera_file : ["$camera_file"]
 out_directory=$4
 echo out_directory : ["$out_directory"]
+remaining_args="${@:5}"
+echo remaining_args : ["$remaining_args"]
+echo " -----------"
+echo " "
 
+if [ $num_args -lt 4 ]
+then
+  echo "Wrong number of arguments."
+fi
 for meshfile in $in_directory/*.$suffix
 do
   # Isolate the filepath from the mesh file name.
@@ -43,10 +61,11 @@ do
   pngfile="$out_directory"/$file_noext.png
   echo ["$meshfile"] : ["$pngfile"]
 
-  # start and kill process
-  # https://stackoverflow.com/questions/22867130/bash-script-to-start-process-wait-random-kill-process-restart/22867414
-  ./build/miniviewer  -c "$camera_file" --png "$pngfile"  "$meshfile" &
-  last_pid=$!
-  sleep 2
-  kill -KILL $last_pid
+  ./build/miniviewer  -c "$camera_file" --png "$pngfile"  $remaining_args "$meshfile"
+  # # start and kill process
+  # # https://stackoverflow.com/questions/22867130/bash-script-to-start-process-wait-random-kill-process-restart/22867414
+  # # not using it, instead, kill from inside the viewer
+  # last_pid=$!
+  # sleep 5
+  # kill -KILL $last_pid
 done

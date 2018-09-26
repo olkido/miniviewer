@@ -1,3 +1,4 @@
+#include <igl/is_file.h>
 #include <igl/list_to_matrix.h>
 #include <igl/matlab_format.h>
 #include <igl/readWRL.h>
@@ -9,10 +10,11 @@
 #include <igl/opengl/glfw/imgui/ImGuiMenu.h>
 #include <igl/opengl/glfw/imgui/ImGuiHelpers.h>
 #include <imgui/imgui.h>
-#include <igl/jet.h>
+#include <igl/parula.h>
 #include <igl/barycenter.h>
 #include <igl/bounding_box_diagonal.h>
 #include <igl/xml/serialize_xml.h>
+#include <igl/png/readPNG.h>
 #include <igl/png/writePNG.h>
 
 #include <iostream>
@@ -25,8 +27,16 @@
 using namespace Eigen;
 using namespace std;
 
+// path to mesh file
 std::string meshfile;
+// folder in which mesh file lives
+std::string meshdir;
+// mesh name (extracted from path without suffix and directory)
+std::string meshname;
+// file to which to save a screenshot (if specified)
 std::string pngfile;
+// boolean, whether to exit right after saving the first screenshot
+bool exit_after_png;
 
 // Mesh: vertices and faces
 Eigen::MatrixXd V;
@@ -54,10 +64,12 @@ igl::opengl::glfw::imgui::ImGuiMenu menu;
 bool first_launch = true;
 
 // Pre-allocate buffers for screenshot
-Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> imR(640,400);
-Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> imG(640,400);
-Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> imB(640,400);
-Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> imA(640,400);
+int png_height=640;
+int png_width=400;
+Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> imR(png_height,png_width), imG(png_height,png_width), imB(png_height,png_width), imA(png_height,png_width);
+
+// Buffers for texture images
+Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> texture_R, texture_G, texture_B, texture_A;
 
 
 // Camera parameters
@@ -141,28 +153,38 @@ int show_scene = 0;
 #define NUM_SCENE_OPTIONS 4; //no scene, angle, trans, zoom
 
 
-#define MAXBUFSIZE  ((int) 1e6)
-MatrixXd readMatrix(const char *filename)
+template <typename DerivedV>
+bool readMatrix( const char *filename, Eigen::PlainObjectBase<DerivedV>& mat)
 {
   int cols = 0, rows = 0;
-  double buff[MAXBUFSIZE];
   
   // Read numbers from file into buffer.
-  ifstream infile;
+  std::ifstream infile;
   infile.open(filename);
   if (!infile.is_open())
-    return MatrixXd::Zero(0, 0);
+  {
+    mat.setZero(0,0);
+    return false;
+    //    return Eigen::PlainObjectBase<DerivedV>::Zero(0, 0);
+  }
   
+  std::vector<double>buff;
+  buff.reserve(1e8);
   while (! infile.eof())
   {
-    string line;
+    std::string line;
     getline(infile, line);
     
     int temp_cols = 0;
-    stringstream stream(line);
+    std::stringstream stream(line);
     while(! stream.eof())
-      stream >> buff[cols*rows+temp_cols++];
-    
+    {
+      double val;
+      stream >> val;
+      buff.push_back(val);
+      temp_cols++;
+      //      stream >> buff[cols*rows+temp_cols++];
+    }
     if (temp_cols == 0)
       continue;
     
@@ -177,14 +199,13 @@ MatrixXd readMatrix(const char *filename)
   rows--;
   
   // Populate matrix with numbers.
-  MatrixXd result(rows,cols);
+  mat.resize(rows,cols);
   for (int i = 0; i < rows; i++)
     for (int j = 0; j < cols; j++)
-      result(i,j) = buff[ cols*i+j ];
+      mat(i,j) = buff[ cols*i+j ];
   
-  return result;
+  return true;
 };
-
 
 // Create a texture that hides the integer translation in the parametrization
 void line_texture(Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> &texture_R,
@@ -219,8 +240,6 @@ void update_display()
     viewer.data().set_uv(uv_scale*UV, FUV);
     viewer.data().show_texture = true;
     
-    Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> texture_R, texture_G, texture_B;
-    line_texture(texture_R, texture_G, texture_B);
     viewer.data().set_texture(texture_R, texture_B, texture_G);
   }
   
@@ -360,6 +379,8 @@ void save_scene()
     viewer.core.draw_buffer(viewer.data(),false,imR,imG,imB,imA);
     // Save it to a PNG
     igl::png::writePNG(imR,imG,imB,imA,pngfile);
+    if (exit_after_png)
+      exit(0);
   }
 }
 
@@ -387,52 +408,104 @@ bool mouse_scroll(igl::opengl::glfw::Viewer& viewer, float delta_y)
   return false;
 }
 
+template <typename DerivedV>
+bool read_argument(const char* file, // filename to read
+                   const std::string &default_suffix, // if filename does not exist, will try to read from file [meshname+default_suffix]
+                   Eigen::PlainObjectBase<DerivedV>& out,
+                   int expected_rows=-1,
+                   int expected_cols=-1
+                   )
+{
+  std::string filename;
+  if (file!=0)
+    filename = std::string(file);
+  
+  if (filename.empty())
+  {
+    filename = meshdir +std::string("/")+ meshname + default_suffix;
+    cerr<<"parse_arguments(): No file provided. Will try to read from "<< filename<<endl;
+  }
+  if (!igl::is_file(filename.c_str()))
+  {
+    cerr<<"parse_arguments(): File" << filename <<" does not exist."<<endl;
+    return false;
+  }
+  Eigen::PlainObjectBase<DerivedV> T;
+  if (!readMatrix(filename.c_str(),T))
+      return false;
+  if (expected_cols!=-1 && T.cols() != expected_cols)
+  {
+    cerr<<"parse_arguments(): Input matrix should have "<< expected_cols <<" columns."<<endl;
+    return false;
+  }
+  if (expected_rows!=-1 && T.rows() != expected_rows)
+  {
+    cerr<<"parse_arguments(): Input matrix should have "<< expected_rows <<" rows."<<endl;
+    return false;
+  }
+  out = T;
+  return true;
+}
 
 bool parse_arguments( std::vector<option::Option> &options)
 {
-  
+  //Assumes mesh has been read already.
   // Throw an error if both a color and a scalar field is provided
   if (options[COLORS].count() > 0 && options[SCALAR_FIELD].count()>0)
   {
     cerr<<"parse_arguments(): Provide either colors or scalar field, not both."<<endl;
     return false;
   }
-
-    
+  
   // Read per-vertex / per-face colors
   if (options[COLORS].count() > 0)
   {
-    MatrixXd T = readMatrix(options[COLORS].arg);
-    if (T.cols() != 3)
+    cerr<<endl<<"\t"<<"Reading colors ... "<<endl;
+    if (!read_argument(options[COLORS].arg, std::string(".colors"), C, -1, 3))
+      return false;
+    if (C.rows() != F.rows() && C.rows() != V.rows())
     {
-      cerr<<"parse_arguments(): Input color matrix should have 3 columns."<<endl;
+      cerr<<"parse_arguments(): Color matrix needs to be of the mesh size (per-vertex or per-face)."<<endl;
+      C = Eigen::MatrixXd::Zero(0,0);
       return false;
     }
-    C = T;
   }
   
   // Read per-vertex / per-face scalar field
   if (options[SCALAR_FIELD].count() > 0)
   {
-    MatrixXd T = readMatrix(options[COLORS].arg);
-    if (T.cols() != 1)
+    cerr<<endl<<"\t"<<"Reading scalar field ... "<<endl;
+    MatrixXd T;
+    if (!read_argument(options[SCALAR_FIELD].arg, std::string(".scalars"), T, -1, 1))
+      return false;
+    if (T.rows() != F.rows() && T.rows() != V.rows())
     {
-      cerr<<"parse_arguments(): Input scalar field matrix should have 1 column."<<endl;
+      cerr<<"parse_arguments(): Scalar field matrix needs to be of the mesh size (per-vertex or per-face)."<<endl;
+      C = Eigen::MatrixXd::Zero(0,0);
       return false;
     }
-    igl::jet(T, true, C);
+    igl::parula(T, true, C);
   }
 
   // Read per-face vector field
+  // This has to be before vector field colors for matrix size check to work
   if (options[FACE_VECTOR_FIELD].count() > 0)
   {
-    MatrixXd T = readMatrix(options[FACE_VECTOR_FIELD].arg);
-    FVF = T;
+    cerr<<endl<<"\t"<<"Reading per-face vector field ... "<<endl;
+    if (!read_argument(options[FACE_VECTOR_FIELD].arg, std::string(".fvf"), FVF, F.rows(), -1))
+      return false;
+    if ( FVF.cols() % 3 != 0)
+    {
+      cerr<<"parse_arguments(): The columns of face vector field matrix need to be dividable by 3."<<endl;
+      FVF = Eigen::MatrixXd::Zero(0,0);
+      return false;
+    }
     // by default, vectors will be painted black
-    CFVF.setZero(FVF.rows(),3);
+    CFVF.setZero(FVF.rows(),FVF.cols());
   }
 
   // Read per-face vector field colors
+  // This matrix has to have the same number of columns as the vector field (3 numbers per vector for color)
   if (options[FACE_VECTOR_FIELD_COLORS].count() > 0)
   {
     // Throw an error if per-face vector field was not provided
@@ -441,8 +514,9 @@ bool parse_arguments( std::vector<option::Option> &options)
       cerr<<"parse_arguments(): vector field colors provided but vector field was not."<<endl;
       return false;
     }
-    MatrixXd T = readMatrix(options[FACE_VECTOR_FIELD_COLORS].arg);
-    CFVF = T;
+    cerr<<endl<<"\t"<<"Reading per-face vector field colors... "<<endl;
+    if (!read_argument(options[FACE_VECTOR_FIELD_COLORS].arg, std::string(".fvfc"), CFVF, F.rows(), FVF.cols()))
+      return false;
   }
   
   //Read texture coordinates
@@ -454,42 +528,69 @@ bool parse_arguments( std::vector<option::Option> &options)
       cerr<<"parse_arguments(): uv coordinates provided but texture corner indices were not."<<endl;
       return false;
     }
-    MatrixXd T = readMatrix(options[UV_COORDS].arg);
-    if (T.cols() != 2)
-    {
-      cerr<<"parse_arguments(): Input uv coordinates matrix should have 2 columns."<<endl;
+    cerr<<endl<<"\t"<<"Reading uv coordinates... "<<endl;
+    if (!read_argument(options[UV_COORDS].arg, std::string(".uv"), UV, -1, 2))
       return false;
-    }
-    UV = T;
   }
-
+  
+  //Read texture corner indices
   if (options[UV_INDS].count() > 0)
   {
     // Throw an error if uv coordinates were not provided
     if (options[UV_COORDS].count() == 0)
     {
-      cerr<<"parse_arguments(): texture corner indices provided but uv coordinates were not."<<endl;
+      cerr<<endl<<"\t"<<"parse_arguments(): texture corner indices provided but uv coordinates were not."<<endl;
       return false;
     }
-    MatrixXd T = readMatrix(options[UV_INDS].arg);
-    if (T.cols() != 2)
-    {
-      cerr<<"parse_arguments(): Input texture corner indices matrix should have 3 columns."<<endl;
+    cerr<<"Reading uv corner indices... "<<endl;
+    if (!read_argument(options[UV_INDS].arg, std::string(".fuv"), FUV, F.rows(), 3))
       return false;
-    }
-    FUV = T.cast<int>();
   }
 
-  // Read lines
+  //Read texture image
+  if (options[TEXTURE_IMAGE].count() > 0)
+  {
+    cerr<<endl<<"\t"<<"Reading texture image... "<<endl;
+    std::string filename;
+    if (options[TEXTURE_IMAGE].arg!=0)
+      filename = std::string(options[TEXTURE_IMAGE].arg);
+    
+    if (filename.empty())
+    {
+      filename = meshdir +std::string("/")+ meshname + std::string(".png");
+      cerr<<"parse_arguments(): No file provided. Will try to read from "<< filename<<endl;
+    }
+
+    if (!igl::is_file(filename.c_str()))
+    {
+      cerr<<"parse_arguments(): File" << filename <<" does not exist."<<endl;
+      return false;
+    }
+    // Read the PNG
+    igl::png::readPNG(filename, texture_R, texture_G, texture_B, texture_A);
+
+  }
+
+  // Read lines - 6 doubles per line (start and end point)
+  // This has to be before line colors for matrix size check to work
   if (options[LINES].count() > 0)
   {
-    MatrixXd T = readMatrix(options[LINES].arg);
-    L = T;
+    cerr<<endl<<"\t"<<"Reading lines... "<<endl;
+    if (!read_argument(options[LINES].arg, std::string(".lines"), L, -1, -1))
+      return false;
+    if ( L.cols() % 6 != 0)
+    {
+      cerr<<"parse_arguments(): The columns of line matrix need to be dividable by 6."<<endl;
+      L = Eigen::MatrixXd::Zero(0,0);
+      return false;
+    }
     // by default, plot the lines black
-    CL.setZero(L.rows(),3);
+    CL.setZero(L.rows(), L.cols()/2);
+
   }
 
   // Read line colors
+  // This matrix has to have hald the number of columns as the line matrix (3 numbers per line for color)
   if (options[LINE_COLORS].count() > 0)
   {
     // Throw an error if lines were not provided
@@ -498,8 +599,9 @@ bool parse_arguments( std::vector<option::Option> &options)
       cerr<<"parse_arguments(): line colors provided but lines were not."<<endl;
       return false;
     }
-    MatrixXd T = readMatrix(options[LINE_COLORS].arg);
-    CL = T;
+    cerr<<endl<<"\t"<<"Reading line colors... "<<endl;
+    if (!read_argument(options[LINE_COLORS].arg, std::string(".linesc"), CL, L.rows(), L.cols()/2))
+      return false;
   }
   
   // Read camera parameters
@@ -512,10 +614,11 @@ bool parse_arguments( std::vector<option::Option> &options)
   if (options[SAVE_PNG].count() > 0)
   {
     pngfile = options[SAVE_PNG].arg;
+    // Read whether to exit right after saving the first screenshot
+    exit_after_png = options[EXIT_AFTER_PNG].count()>0;
   }
 
-  //todo: check sizes of overlays etc.
-
+   
   return true;
 }
 
@@ -530,7 +633,10 @@ int main(int argc, char *argv[])
   option::Parser parse(usage, argc, argv, &options[0], &buffer[0]);
   
   if (parse.error())
+  {
+    cerr<<"Error parsing options."<<endl;
     return 1;
+  }
   
   if (options[HELP] || argc == 0)
   {
@@ -539,23 +645,30 @@ int main(int argc, char *argv[])
   }
   
   
-  for (option::Option* opt = options[UNKNOWN]; opt; opt = opt->next())
-    std::cout << "Unknown option: " << std::string(opt->name,opt->namelen) << "\n";
+  if (options[UNKNOWN].count()>0)
+  {
+    for (option::Option* opt = options[UNKNOWN]; opt; opt = opt->next())
+      std::cout << "Unknown option: " << std::string(opt->name,opt->namelen) << "\n";
+    option::printUsage(std::cout, usage);
+    return 0;
+  }
+
   
   for (int i = 0; i < parse.nonOptionsCount(); ++i)
     std::cout << "Non-option #" << i << ": " << parse.nonOption(i) << "\n";
   
-  if ( parse.nonOptionsCount() !=1 )
+  if ( parse.nonOptionsCount() < 1 )
   {
     option::printUsage(std::cout, usage);
+    cerr<<"Error: mesh file not provided."<<endl;
     return 0;
   }
   
   std::string meshfile = string(parse.nonOption(0));
   
   // dirname, basename, extension and filename
-  std::string dir,  base,  ext,  name;
-  igl::pathinfo(meshfile,dir,base,ext,name);
+  std::string base,  ext;
+  igl::pathinfo(meshfile,meshdir,base,ext,meshname);
   transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
   
   // read mesh
@@ -600,10 +713,6 @@ int main(int argc, char *argv[])
   // Add content to the default menu window
   menu.callback_draw_viewer_menu = default_menu_function;
   
-//  // Draw additional windows
-//  menu.callback_draw_custom_window = my_menu_function;
-//
-//  
   viewer.callback_key_pressed = key_down;
   viewer.callback_post_draw = post_draw;
   viewer.callback_pre_draw = pre_draw;
@@ -619,8 +728,8 @@ int main(int argc, char *argv[])
   viewer.core.background_color<<1.,1.,1.,1.;
   viewer.data().line_color<<173./255,174./255,103./255,1.;
   viewer.data().show_lines = false;
-  viewer.data().show_texture = false;
-  viewer.data().face_based = true;
+  viewer.data().show_texture = (FUV.rows() == F.rows()) ? true: false;
+  viewer.data().face_based = (C.rows() == V.rows()) ? false: true;
   
   update_display();
   viewer.launch();
