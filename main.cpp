@@ -16,6 +16,8 @@
 #include <igl/xml/serialize_xml.h>
 #include <igl/png/readPNG.h>
 #include <igl/png/writePNG.h>
+#include <igl/readDMAT.h>
+#include <igl/writeDMAT.h>
 
 #include <iostream>
 #include <fstream>
@@ -111,34 +113,36 @@ struct Camera
 
   void load_from_viewer()
   {
-    trackball_angle = viewer.core.trackball_angle;
-    camera_translation = viewer.core.camera_translation;
-    camera_base_translation = viewer.core.camera_base_translation;
-    camera_base_zoom = viewer.core.camera_base_zoom;
-    camera_zoom = viewer.core.camera_zoom;
+    trackball_angle = viewer.core().trackball_angle;
+    camera_translation = viewer.core().camera_translation;
+    camera_base_translation = viewer.core().camera_base_translation;
+    camera_base_zoom = viewer.core().camera_base_zoom;
+    camera_zoom = viewer.core().camera_zoom;
     is_valid = true;
   }
   
   void save_to_viewer()
   {
-    viewer.core.trackball_angle = trackball_angle;
-    viewer.core.camera_translation = camera_translation;
-    viewer.core.camera_base_translation = camera_base_translation;
-    viewer.core.camera_base_zoom = camera_base_zoom;
-    viewer.core.camera_zoom =  camera_zoom;
+    viewer.core().trackball_angle = trackball_angle;
+    viewer.core().camera_translation = camera_translation;
+    viewer.core().camera_base_translation = camera_base_translation;
+    viewer.core().camera_base_zoom = camera_base_zoom;
+    viewer.core().camera_zoom =  camera_zoom;
   }
   
   bool is_same_as_viewer()
   {
-    return (
-            trackball_angle.x() == viewer.core.trackball_angle.x() &&
-            trackball_angle.y() == viewer.core.trackball_angle.y() &&
-            trackball_angle.z() == viewer.core.trackball_angle.z() &&
-            trackball_angle.w() == viewer.core.trackball_angle.w() &&
-            camera_translation == viewer.core.camera_translation &&
-            camera_base_translation == viewer.core.camera_base_translation &&
-            camera_base_zoom == viewer.core.camera_base_zoom &&
-            camera_zoom == viewer.core.camera_zoom);
+    Eigen::Vector4f ta;
+    ta<< trackball_angle.x(), trackball_angle.y(), trackball_angle.z(), trackball_angle.w();
+    Eigen::Vector4f vta;
+    vta<< viewer.core().trackball_angle.x(), viewer.core().trackball_angle.y(), viewer.core().trackball_angle.z(), viewer.core().trackball_angle.w();
+    bool same_angle = (ta -  vta).norm()<1e-8;
+    bool same_camera_translation = (camera_translation - viewer.core().camera_translation).norm() <1e-8;
+    bool same_camera_base_translation = (camera_base_translation - viewer.core().camera_base_translation).norm() <1e-8;
+    bool same_camera_base_zoom = fabs(camera_base_zoom - viewer.core().camera_base_zoom)<1e-8;
+    bool same_camera_zoom = fabs(camera_zoom - viewer.core().camera_zoom)<1e-8;
+
+    return (same_angle && same_camera_translation && same_camera_base_translation && same_camera_zoom && same_camera_base_zoom);
   }
 };
 Camera camera;
@@ -152,60 +156,6 @@ int show_scene = 0;
 
 #define NUM_SCENE_OPTIONS 4; //no scene, angle, trans, zoom
 
-
-template <typename DerivedV>
-bool readMatrix( const char *filename, Eigen::PlainObjectBase<DerivedV>& mat)
-{
-  int cols = 0, rows = 0;
-  
-  // Read numbers from file into buffer.
-  std::ifstream infile;
-  infile.open(filename);
-  if (!infile.is_open())
-  {
-    mat.setZero(0,0);
-    return false;
-    //    return Eigen::PlainObjectBase<DerivedV>::Zero(0, 0);
-  }
-  
-  std::vector<double>buff;
-  buff.reserve(1e8);
-  while (! infile.eof())
-  {
-    std::string line;
-    getline(infile, line);
-    
-    int temp_cols = 0;
-    std::stringstream stream(line);
-    while(! stream.eof())
-    {
-      double val;
-      stream >> val;
-      buff.push_back(val);
-      temp_cols++;
-      //      stream >> buff[cols*rows+temp_cols++];
-    }
-    if (temp_cols == 0)
-      continue;
-    
-    if (cols == 0)
-      cols = temp_cols;
-    
-    rows++;
-  }
-  
-  infile.close();
-  
-  rows--;
-  
-  // Populate matrix with numbers.
-  mat.resize(rows,cols);
-  for (int i = 0; i < rows; i++)
-    for (int j = 0; j < cols; j++)
-      mat(i,j) = buff[ cols*i+j ];
-  
-  return true;
-};
 
 // Create a texture that hides the integer translation in the parametrization
 void line_texture(Eigen::Matrix<unsigned char,Eigen::Dynamic,Eigen::Dynamic> &texture_R,
@@ -269,9 +219,9 @@ void update_display()
   int numF = F.rows();
   if (show_mesh_stats)
   {
-    std::string tag;
-    tag = "#V: "+to_string(numV)+", #F: "+to_string(numF);
-    viewer.data().add_label(RowVector3d::Zero(), tag);
+    std::stringstream tag;
+    tag << "#V: "<< numV<< ", #F: "<< numF;
+    viewer.data().add_label(RowVector3d::Zero(), tag.str());
   }
   
   // plot camera parameters
@@ -281,31 +231,49 @@ void update_display()
     std::string tag;
     if (show_scene==1)
       tag = "trackball_angle: "
-      +to_string(viewer.core.trackball_angle.x())
+      +to_string(viewer.core().trackball_angle.x())
       +", "
-      +to_string(viewer.core.trackball_angle.y())
+      +to_string(viewer.core().trackball_angle.y())
       +", "
-      +to_string(viewer.core.trackball_angle.z())
+      +to_string(viewer.core().trackball_angle.z())
       +", "
-      +to_string(viewer.core.trackball_angle.w())
+      +to_string(viewer.core().trackball_angle.w())
       ;
     else if (show_scene==2)
       tag = "camera_translation: "
-      +to_string(viewer.core.camera_translation.x())
+      +to_string(viewer.core().camera_translation.x())
       +", "
-      +to_string(viewer.core.camera_translation.y())
+      +to_string(viewer.core().camera_translation.y())
       +", "
-      +to_string(viewer.core.camera_translation.z())
+      +to_string(viewer.core().camera_translation.z())
       ;
     else if (show_scene==3)
       tag = "camera_base_zoom: "
-      +to_string(viewer.core.camera_base_zoom)
+      +to_string(viewer.core().camera_base_zoom)
       +" camera_zoom: "
-      +to_string(viewer.core.camera_zoom)
+      +to_string(viewer.core().camera_zoom)
       ;
     viewer.data().add_label(pos, tag);
     viewer.data().add_label(pos, tag);
     
+  }
+}
+
+
+void save_scene()
+{
+  // XML serialization
+  camera.write_to_xml(xmlFile);
+  
+  // (optional) write screenshot to .png
+  if (!pngfile.empty())
+  {
+    // Draw the scene in the buffers
+    viewer.core().draw_buffer(viewer.data(),false,imR,imG,imB,imA);
+    // Save it to a PNG
+    igl::png::writePNG(imR,imG,imB,imA,pngfile);
+    if (exit_after_png)
+      exit(0);
   }
 }
 
@@ -349,6 +317,11 @@ bool key_down(igl::opengl::glfw::Viewer& viewer,
       show_scene = (show_scene+1)%NUM_SCENE_OPTIONS;
       ret = true;
     }
+    if (key == 's')
+    {
+      save_scene();
+      ret = true;
+    }
   }
   update_display();
   return ret;
@@ -361,50 +334,22 @@ bool pre_draw(igl::opengl::glfw::Viewer& viewer)
   if (camera.is_same_as_viewer())
     return false;
   
-  camera.save_to_viewer();
+  if (first_launch)
+  {
+    camera.save_to_viewer();
+    first_launch = false;
+  }
+  else
+    camera.load_from_viewer();
 
   return false;
   
-}
-
-void save_scene()
-{
-  // XML serialization
-  camera.write_to_xml(xmlFile);
-  
-  // (optional) write screenshot to .png
-  if (!pngfile.empty())
-  {
-    // Draw the scene in the buffers
-    viewer.core.draw_buffer(viewer.data(),false,imR,imG,imB,imA);
-    // Save it to a PNG
-    igl::png::writePNG(imR,imG,imB,imA,pngfile);
-    if (exit_after_png)
-      exit(0);
-  }
 }
 
 bool post_draw(igl::opengl::glfw::Viewer& viewer)
 {
   // store and write out the camera
   camera.load_from_viewer();
-  if (first_launch)
-  {
-    save_scene();
-    first_launch = false;
-  }
-  return false;
-}
-bool mouse_up(igl::opengl::glfw::Viewer& viewer, int button, int modifier)
-{
-  save_scene();
-  return false;
-}
-
-bool mouse_scroll(igl::opengl::glfw::Viewer& viewer, float delta_y)
-{
-  if(delta_y != 0)
-    save_scene();
   return false;
 }
 
@@ -430,20 +375,25 @@ bool read_argument(const char* file, // filename to read
     cerr<<"parse_arguments(): File" << filename <<" does not exist."<<endl;
     return false;
   }
-  Eigen::PlainObjectBase<DerivedV> T;
-  if (!readMatrix(filename.c_str(),T))
-      return false;
-  if (expected_cols!=-1 && T.cols() != expected_cols)
+
+  if (!igl::readDMAT(filename,out))
+  {
+    cerr<<"parse_arguments(): Failure reading file "<< filename <<" columns."<<endl;
+    out.resize(0,0);
+    return false;
+  }
+  if (expected_cols!=-1 && out.cols() != expected_cols)
   {
     cerr<<"parse_arguments(): Input matrix should have "<< expected_cols <<" columns."<<endl;
+    out.resize(0,0);
     return false;
   }
-  if (expected_rows!=-1 && T.rows() != expected_rows)
+  if (expected_rows!=-1 && out.rows() != expected_rows)
   {
     cerr<<"parse_arguments(): Input matrix should have "<< expected_rows <<" rows."<<endl;
+    out.resize(0,0);
     return false;
   }
-  out = T;
   return true;
 }
 
@@ -622,6 +572,45 @@ bool parse_arguments( std::vector<option::Option> &options)
   return true;
 }
 
+void draw_menu_boxes()
+{
+  // Customize the menu
+  const auto & default_menu_function = [&]()
+  {
+    // Draw parent menu content
+    menu.draw_viewer_menu();
+    
+    // Add new group to *existing* viewer menut
+    if (ImGui::CollapsingHeader("miniviewer", ImGuiTreeNodeFlags_DefaultOpen))
+    {
+      // Expose variable directly ...
+      if (ImGui::InputFloat("UV scale", &uv_scale, 0, 0, 3))
+        update_display();
+      
+      if (ImGui::Checkbox("Mesh Stats", &show_mesh_stats))
+        update_display();
+      
+      if (ImGui::InputFloat("UV scale", &uv_scale, 0, 0, 3))
+        update_display();
+      
+      if (ImGui::InputInt("Show Scene", &show_scene))
+        update_display();
+
+    }
+  };
+  
+
+  
+  // Attach a menu plugin
+  viewer.plugins.push_back(&menu);
+  // Add content to the default menu window
+  menu.callback_draw_viewer_menu = default_menu_function;
+  
+  
+  
+}
+
+
 int main(int argc, char *argv[])
 {
   
@@ -673,51 +662,21 @@ int main(int argc, char *argv[])
   
   // read mesh
   igl::read_triangle_mesh(meshfile, V, F);
-  
-  
+
   igl::barycenter(V, F, B);
   C.setConstant(F.rows(),3,.99);
 
   if (!parse_arguments(options))
     exit(1);
-  
-  // Customize the menu
-  const auto & default_menu_function = [&]()
-  {
-    // Draw parent menu content
-    menu.draw_viewer_menu();
-    
-    // Add new group to *existing* viewer menut
-    if (ImGui::CollapsingHeader("miniviewer", ImGuiTreeNodeFlags_DefaultOpen))
-    {
-      // Expose variable directly ...
-      if (ImGui::InputFloat("UV scale", &uv_scale, 0, 0, 3))
-        update_display();
-      
-      if (ImGui::Checkbox("Mesh Stats", &show_mesh_stats))
-        update_display();
-      
-      if (ImGui::InputFloat("UV scale", &uv_scale, 0, 0, 3))
-        update_display();
-      
-      if (ImGui::InputInt("Show Scene", &show_scene))
-        update_display();
 
-    }
-  };
-  
 
-  
-  // Attach a menu plugin
-  viewer.plugins.push_back(&menu);
-  // Add content to the default menu window
-  menu.callback_draw_viewer_menu = default_menu_function;
-  
+// Add menu boxes
+  draw_menu_boxes();
+
+
   viewer.callback_key_pressed = key_down;
   viewer.callback_post_draw = post_draw;
   viewer.callback_pre_draw = pre_draw;
-  viewer.callback_mouse_up = mouse_up;
-  viewer.callback_mouse_scroll = mouse_scroll;
 
   viewer.data().clear();
   viewer.data().lines.resize(0,9);
@@ -725,11 +684,12 @@ int main(int argc, char *argv[])
   
   viewer.data().set_mesh(V, F);
   viewer.data().set_colors(C);
-  viewer.core.background_color<<1.,1.,1.,1.;
+  viewer.core().background_color<<1.,1.,1.,1.;
   viewer.data().line_color<<173./255,174./255,103./255,1.;
   viewer.data().show_lines = false;
   viewer.data().show_texture = (FUV.rows() == F.rows()) ? true: false;
   viewer.data().face_based = (C.rows() == V.rows()) ? false: true;
+  viewer.data().show_custom_labels = true;
   
   update_display();
   viewer.launch();
