@@ -59,6 +59,9 @@ MatrixXd FVF, CFVF;
 // Overlay lines and line colors
 MatrixXd L,CL;
 
+// Overlay points and point colors
+MatrixXd P,CP;
+
 std::string xmlFile = "camera.xml";
 
 igl::opengl::glfw::Viewer viewer;
@@ -214,6 +217,12 @@ void update_display()
     
   }
   
+  // show points
+  if (P.rows()>0)
+  {
+    viewer.data().point_size = 10;
+    viewer.data().add_points(P, CP);
+  }
   // plot mesh size
   int numV = V.rows();
   int numF = F.rows();
@@ -354,16 +363,13 @@ bool post_draw(igl::opengl::glfw::Viewer& viewer)
 }
 
 template <typename DerivedV>
-bool read_argument(const char* file, // filename to read
-                   const std::string &default_suffix, // if filename does not exist, will try to read from file [meshname+default_suffix]
+bool read_argument(const std::string &default_suffix, // if filename does not exist, will try to read from file [meshname+default_suffix]
                    Eigen::PlainObjectBase<DerivedV>& out,
                    int expected_rows=-1,
                    int expected_cols=-1
                    )
 {
   std::string filename;
-  if (file!=0)
-    filename = std::string(file);
   
   if (filename.empty())
   {
@@ -411,7 +417,7 @@ bool parse_arguments( std::vector<option::Option> &options)
   if (options[COLORS].count() > 0)
   {
     cerr<<endl<<"\t"<<"Reading colors ... "<<endl;
-    if (!read_argument(options[COLORS].arg, std::string(".colors"), C, -1, 3))
+    if (!read_argument(std::string(".colors"), C, -1, 3))
       return false;
     if (C.rows() != F.rows() && C.rows() != V.rows())
     {
@@ -426,7 +432,7 @@ bool parse_arguments( std::vector<option::Option> &options)
   {
     cerr<<endl<<"\t"<<"Reading scalar field ... "<<endl;
     MatrixXd T;
-    if (!read_argument(options[SCALAR_FIELD].arg, std::string(".scalars"), T, -1, 1))
+    if (!read_argument(std::string(".scalars"), T, -1, 1))
       return false;
     if (T.rows() != F.rows() && T.rows() != V.rows())
     {
@@ -442,7 +448,7 @@ bool parse_arguments( std::vector<option::Option> &options)
   if (options[FACE_VECTOR_FIELD].count() > 0)
   {
     cerr<<endl<<"\t"<<"Reading per-face vector field ... "<<endl;
-    if (!read_argument(options[FACE_VECTOR_FIELD].arg, std::string(".fvf"), FVF, F.rows(), -1))
+    if (!read_argument(std::string(".fvf"), FVF, F.rows(), -1))
       return false;
     if ( FVF.cols() % 3 != 0)
     {
@@ -465,7 +471,7 @@ bool parse_arguments( std::vector<option::Option> &options)
       return false;
     }
     cerr<<endl<<"\t"<<"Reading per-face vector field colors... "<<endl;
-    if (!read_argument(options[FACE_VECTOR_FIELD_COLORS].arg, std::string(".fvfc"), CFVF, F.rows(), FVF.cols()))
+    if (!read_argument(std::string(".fvfc"), CFVF, F.rows(), FVF.cols()))
       return false;
   }
   
@@ -479,7 +485,7 @@ bool parse_arguments( std::vector<option::Option> &options)
       return false;
     }
     cerr<<endl<<"\t"<<"Reading uv coordinates... "<<endl;
-    if (!read_argument(options[UV_COORDS].arg, std::string(".uv"), UV, -1, 2))
+    if (!read_argument(std::string(".uv"), UV, -1, 2))
       return false;
   }
   
@@ -493,7 +499,7 @@ bool parse_arguments( std::vector<option::Option> &options)
       return false;
     }
     cerr<<"Reading uv corner indices... "<<endl;
-    if (!read_argument(options[UV_INDS].arg, std::string(".fuv"), FUV, F.rows(), 3))
+    if (!read_argument(std::string(".fuv"), FUV, F.rows(), 3))
       return false;
   }
 
@@ -526,7 +532,7 @@ bool parse_arguments( std::vector<option::Option> &options)
   if (options[LINES].count() > 0)
   {
     cerr<<endl<<"\t"<<"Reading lines... "<<endl;
-    if (!read_argument(options[LINES].arg, std::string(".lines"), L, -1, -1))
+    if (!read_argument(std::string(".lines"), L, -1, -1))
       return false;
     if ( L.cols() % 6 != 0)
     {
@@ -540,7 +546,7 @@ bool parse_arguments( std::vector<option::Option> &options)
   }
 
   // Read line colors
-  // This matrix has to have hald the number of columns as the line matrix (3 numbers per line for color)
+  // This matrix has to have half the number of columns as the line matrix (3 numbers per line for color)
   if (options[LINE_COLORS].count() > 0)
   {
     // Throw an error if lines were not provided
@@ -550,10 +556,44 @@ bool parse_arguments( std::vector<option::Option> &options)
       return false;
     }
     cerr<<endl<<"\t"<<"Reading line colors... "<<endl;
-    if (!read_argument(options[LINE_COLORS].arg, std::string(".linesc"), CL, L.rows(), L.cols()/2))
+    if (!read_argument(std::string(".linesc"), CL, L.rows(), L.cols()/2))
       return false;
   }
   
+  // Read points - 3 doubles per point
+  // This has to be before point colors for matrix size check to work
+  if (options[POINTS].count() > 0)
+  {
+    cerr<<endl<<"\t"<<"Reading points... "<<endl;
+    if (!read_argument(std::string(".points"), P, -1, -1))
+      return false;
+    if ( P.cols() != 3)
+    {
+      cerr<<"parse_arguments(): The columns of point matrix need to be 3."<<endl;
+      P = Eigen::MatrixXd::Zero(0,0);
+      return false;
+    }
+    // by default, plot the points black
+    CP.setZero(P.rows(), P.cols());
+
+  }
+
+  // Read point colors
+  // This matrix has to have the same number of columns as the point matrix (3 numbers per point for color)
+  if (options[POINT_COLORS].count() > 0)
+  {
+    // Throw an error if points were not provided
+    if (options[POINTS].count() == 0)
+    {
+      cerr<<"parse_arguments(): point colors provided but points were not."<<endl;
+      return false;
+    }
+    cerr<<endl<<"\t"<<"Reading point colors... "<<endl;
+    if (!read_argument(std::string(".pointsc"), CP, P.rows(), P.cols()))
+      return false;
+  }
+  
+
   // Read camera parameters
   if (options[CAMERA].count() > 0)
   {
@@ -653,6 +693,13 @@ int main(int argc, char *argv[])
     return 0;
   }
   
+  if ( parse.nonOptionsCount() > 1 )
+  {
+    option::printUsage(std::cout, usage);
+    cerr<<"Error: more than 1 non-options."<<endl;
+    return 0;
+  }
+
   std::string meshfile = string(parse.nonOption(0));
   
   // dirname, basename, extension and filename
